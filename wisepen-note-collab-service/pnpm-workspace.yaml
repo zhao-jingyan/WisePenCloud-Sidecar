@@ -1,0 +1,2 @@
+patchedDependencies:
+  nacos-naming@2.6.1: patches/nacos-naming@2.6.1.patch

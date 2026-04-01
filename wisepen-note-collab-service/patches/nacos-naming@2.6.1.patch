@@ -1,0 +1,29 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+deleted file mode 100644
+index e5aa79f39a717a91589daf37652f4d4c102a0d1c..0000000000000000000000000000000000000000
+diff --git a/lib/naming/proxy.js b/lib/naming/proxy.js
+index 1ac35123d438a2764ea03c8b2c74fa1195152def..009fdbe759c8cc7acea6c7c54a936138a510d7d1 100644
+--- a/lib/naming/proxy.js
++++ b/lib/naming/proxy.js
+@@ -17,6 +17,13 @@
+ 
+ 'use strict';
+ 
++const http = require('http');
++const nacosAgent = new http.Agent({
++  keepAlive: true,
++  maxSockets: 100,
++  keepAliveMsecs: 30000
++});
++
+ const uuid = require('uuid/v4');
+ const Base = require('sdk-base');
+ const utils = require('../util');
+@@ -170,6 +177,7 @@ class NameProxy extends Base {
+       data: params,
+       dataType: 'text',
+       dataAsQueryString: true,
++      agent: nacosAgent,
+     });
+ 
+     if (result.status === 200) {
