@@ -29,14 +29,7 @@ export async function checkPermission(
   // 使用 params 发送，对应 Java 的 @RequestParam
   const resp = await client.post<R<ResourceCheckPermissionResDTO>>(
     '/internal/resource/checkResPermission', 
-    null, 
-    {
-      params: {
-        resourceId,
-        userId,
-        groupRoles: JSON.stringify(groupRoles) // Map 类型通常需要序列化传递
-      }
-    }
+    { resourceId, userId, groupRoles }
   );
   const resData = resp?.data;
   if (!resData || resData.code !== 200 || !resData.data) {

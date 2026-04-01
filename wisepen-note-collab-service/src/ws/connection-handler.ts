@@ -14,7 +14,7 @@ const connectionIntents = new WeakMap<WebSocket, ClientIntent[]>();
 const connectionWritable = new WeakMap<WebSocket, boolean>();
 
 export function setupWebSocketServer(wss: WebSocketServer): void {
-  wss.on('connection', async (ws: WebSocket, req: IncomingMessage) => {
+  wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
     const url = new URL(req.url || '/', `http://${req.headers.host}`);
     const resourceId = url.searchParams.get('resourceId');
 
@@ -27,45 +27,12 @@ export function setupWebSocketServer(wss: WebSocketServer): void {
       return;
     }
 
-    // 离开房间
-    ws.on('close', () => {
-      leaveRoom(resourceId, ws).catch((err) =>
-        console.error(`[WS] Error leaving room ${resourceId}`, err),
-      );
-    });
-
-    ws.on('error', (err) => {
-      console.error(`[WS] Connection error in room ${resourceId}`, err);
-    });
-
-    // 鉴权
-    try {
-      const groupRoleMap = groupRoleMapStr != null ? JSON.parse(groupRoleMapStr) : {};
-      const { resourceAccessRole, allowedActions } = await checkPermission(resourceId, userId, groupRoleMap);
-      if (resourceAccessRole === 'NONE') {
-        ws.close(4003, 'Permission denied');
-        return;
-      }
-      // 判断数组中是否包含协同编辑权限 (不再使用位运算掩码)
-      const canEdit = allowedActions && allowedActions.includes('EDIT');
-      connectionWritable.set(ws, canEdit);
-    } catch (err) {
-      console.error(`[Auth] Permission check failed for ${userId} on ${resourceId}`, err);
-      ws.close(4500, 'Auth service error');
-      return;
-    }
-
-    // 加入房间
-    try {
-      await joinRoom(resourceId, ws, userId);
-    } catch (err) {
-      console.error(`[Room] Failed to join room ${resourceId}`, err);
-      ws.close(4500, 'Room initialization error');
-      return;
-    }
+    // 引入消息缓冲区
+    let isReady = false;
+    const messageQueue: { rawData: Buffer; isBinary: boolean }[] = [];
 
     // 处理客户端消息
-    ws.on('message', (rawData: Buffer, isBinary: boolean) => {
+    const processMessage = (rawData: Buffer, isBinary: boolean) => {
       try {
         const room = getRoom(resourceId);
         if (!room) return;
@@ -137,6 +104,66 @@ export function setupWebSocketServer(wss: WebSocketServer): void {
       } catch (err) {
         console.error(`[WS] Error processing message in room ${resourceId}`, err);
       }
+    };
+
+    // 处理客户端消息
+    ws.on('message', (rawData: Buffer, isBinary: boolean) => {
+      if (!isReady) {
+        // 如果鉴权或房间还没准备好，先丢进队列暂存
+        messageQueue.push({ rawData, isBinary });
+      } else {
+        processMessage(rawData, isBinary);
+      }
     });
+
+    // 离开房间
+    ws.on('close', () => {
+      leaveRoom(resourceId, ws).catch((err) =>
+        console.error(`[WS] Error leaving room ${resourceId}`, err),
+      );
+    });
+
+    ws.on('error', (err) => {
+      console.error(`[WS] Connection error in room ${resourceId}`, err);
+    });
+
+    // 鉴权
+    (async () => {
+      try {
+        const groupRoleMap = groupRoleMapStr != null ? JSON.parse(groupRoleMapStr) : {};
+        const { resourceAccessRole, allowedActions } = await checkPermission(resourceId, userId, groupRoleMap);
+
+        if (resourceAccessRole === 'NONE') {
+          console.warn(`[Auth] Permission denied`, { userId, resourceId, groupRoleMap });
+          ws.close(4003, 'Permission denied');
+          return;
+        }
+        // 判断数组中是否包含协同编辑权限 (不再使用位运算掩码)
+        const canEdit = allowedActions && allowedActions.includes('EDIT');
+        connectionWritable.set(ws, canEdit);
+      } catch (err) {
+        console.error(`[Auth] Permission check failed for ${userId} on ${resourceId}`, err);
+        ws.close(4500, 'Auth service error');
+        return;
+      }
+
+      // 加入房间
+      try {
+        await joinRoom(resourceId, ws, userId);
+      } catch (err) {
+        console.error(`[Room] Failed to join room ${resourceId}`, err);
+        ws.close(4500, 'Room initialization error');
+        return;
+      }
+
+      isReady = true; // 鉴权和房间准备完成，标记连接为就绪状态
+
+      // 处理之前暂存的消息
+      while (messageQueue.length > 0) {
+        const msg = messageQueue.shift()!;
+        processMessage(msg.rawData, msg.isBinary);
+      }
+
+    })();
   });
 }
