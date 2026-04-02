@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  note-collab-service:
+    image: ${DOCKER_REGISTRY}/wisepencloud-note-collab:${APP_VERSION:-latest}
+    container_name: wisepen-note-collab-service
+    restart: always
+    environment:
+      - TZ=Asia/Shanghai
+      - PROFILE=prod
+      - PORT=9700
+      - SERVICE_NAME=wisepen-note-collab-service
+      - NACOS_SERVER_ADDR=nacos:8848
+      - NACOS_NAMESPACE=public
+      - NACOS_GROUP=DEFAULT_GROUP
+      - NACOS_USERNAME=${NACOS_USERNAME}
+      - NACOS_PASSWORD=${NACOS_PASSWORD}
+      - PREFERRED_NETWORKS=172,10,192
+      - IGNORED_INTERFACES=VMnet.*,vEthernet.*,docker0,lo
+    volumes:
+      - ../logs/user:/logs
+    networks:
+      - cloud-net
+
+networks:
+  cloud-net:
+    external: true
+    name: cloud-infra_cloud-net
