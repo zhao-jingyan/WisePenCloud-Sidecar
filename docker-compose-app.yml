@@ -2,6 +2,9 @@ version: '3.8'
 
 services:
   note-collab-service:
+    build:
+      context: ./wisepen-note-collab-service
+      dockerfile: Dockerfile
     image: ${DOCKER_REGISTRY}/wisepencloud-note-collab:${APP_VERSION:-latest}
     container_name: wisepen-note-collab-service
     restart: always
