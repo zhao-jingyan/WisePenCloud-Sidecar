@@ -9,6 +9,10 @@ import { joinRoom, leaveRoom, getRoom } from './room-manager';
 import { parseIntent } from './protocol';
 import { checkPermission } from '../clients/note-service-client';
 import { ClientIntent } from '../types';
+import {
+  extractDeveloper,
+  runWithDeveloperContext,
+} from '../development-traffic/request-context';
 
 const connectionIntents = new WeakMap<WebSocket, ClientIntent[]>();
 const connectionWritable = new WeakMap<WebSocket, boolean>();
@@ -128,7 +132,7 @@ export function setupWebSocketServer(wss: WebSocketServer): void {
     });
 
     // 鉴权
-    (async () => {
+    runWithDeveloperContext(extractDeveloper(req.headers), async () => {
       try {
         const groupRoleMap = groupRoleMapStr != null ? JSON.parse(groupRoleMapStr) : {};
         const { resourceAccessRole, allowedActions } = await checkPermission(resourceId, userId, groupRoleMap);
@@ -164,6 +168,6 @@ export function setupWebSocketServer(wss: WebSocketServer): void {
         processMessage(msg.rawData, msg.isBinary);
       }
 
-    })();
+    });
   });
 }

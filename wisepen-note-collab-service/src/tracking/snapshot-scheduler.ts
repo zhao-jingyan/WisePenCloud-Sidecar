@@ -75,8 +75,8 @@ export async function flushRoom(room: Room): Promise<void> {
   // --- 增量快照 (DELTA) 逻辑 ---
 
   if (room.prevStateVector) {
-    room.currentVersion += 1; // 版本号递增
-    const version = room.currentVersion;
+    room.snapshotVersion += 1; // 版本号递增
+    const version = room.snapshotVersion;
 
     // 获取当前状态向量
     const stateVector = getStateVector(room.yDoc);
@@ -99,12 +99,12 @@ export async function flushRoom(room: Room): Promise<void> {
   } else {
     // 首次创建，初始化一个基准状态向量
     room.prevStateVector = getStateVector(room.yDoc);
-    room.currentVersion = 1;
+    room.snapshotVersion = 1;
   }
 
 
   // --- 全量快照点 (Checkpoint) 逻辑 ---
-  const version = room.currentVersion;
+  const version = room.snapshotVersion;
   // 每 config.collab.checkpointInterval 次版本号递增，就生成一个全量快照
   const isCheckpoint = (version > 0 && version % config.collab.checkpointInterval === 0);
 

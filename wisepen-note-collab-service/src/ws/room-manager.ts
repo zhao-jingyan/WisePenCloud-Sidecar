@@ -45,7 +45,7 @@ export async function joinRoom(
             awareness: new awarenessProtocol.Awareness(yDoc),
             connections: new Map(),
             prevStateVector: stateVector,
-            currentVersion: version,
+            snapshotVersion: version,
             dirty: false,
             idleTimer: null,
             pendingBroadcasts: [],

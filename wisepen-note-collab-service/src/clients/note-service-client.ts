@@ -2,9 +2,15 @@ import axios, { AxiosInstance } from 'axios';
 import { getNoteServiceUrl, getResourceServiceUrl } from '../nacos/registry';
 import { config } from '../config';
 import { R, ResourceCheckPermissionResDTO, SnapshotResponse } from '../types';
+import { getCurrentDeveloper } from '../development-traffic/request-context';
+import { DEVELOPER_HEADER } from '../development-traffic/constants';
 
 function fromSourceHeader(): Record<string, string> {
-  return { 'X-From-Source': config.security.fromSourceSecret };
+  const developer = getCurrentDeveloper();
+  return {
+    'X-From-Source': config.security.fromSourceSecret,
+    ...(developer ? { [DEVELOPER_HEADER]: developer } : {}),
+  };
 }
 
 export async function getNoteServiceClient(): Promise<AxiosInstance> {
@@ -28,7 +34,7 @@ export async function getResourceServiceClient(): Promise<AxiosInstance> {
 export async function checkPermission(
   resourceId: string,
   userId: string,
-  groupRoles: Record<string, string>,
+  groupRoles: Record<string, number>,
 ): Promise<ResourceCheckPermissionResDTO> {
   const client = await getResourceServiceClient();
   // 使用 params 发送，对应 Java 的 @RequestParam
