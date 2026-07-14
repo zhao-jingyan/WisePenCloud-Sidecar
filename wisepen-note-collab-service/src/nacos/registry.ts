@@ -1,6 +1,10 @@
 import { config } from '../config';
 import * as os from 'os';
 import { NacosNamingClient } from 'nacos';
+import { processDeveloper } from '../development-traffic/developer-config';
+import { getCurrentDeveloper } from '../development-traffic/request-context';
+import { DEVELOPER_METADATA_KEY } from '../development-traffic/constants';
+import { selectDeveloperInstances } from '../development-traffic/instance-selector';
 
 export let nacosNamingClient: any;
 
@@ -76,11 +80,15 @@ export async function registerWithNacos(): Promise<void> {
       groupName: config.nacos.group,
       metadata: {
         'preserved.register.source': 'NODEJS',
-        'version': '1.0.0'
+        'version': '1.0.0',
+        ...(processDeveloper ? { [DEVELOPER_METADATA_KEY]: processDeveloper } : {}),
       }
     });
 
-    console.log(`[Nacos] Registered at ${registerIp}:${config.port}`);
+    console.log(
+      `[Nacos] Registered at ${registerIp}:${config.port}` +
+        (processDeveloper ? ` developer=${processDeveloper}` : ''),
+    );
   } catch (err) {
     console.error('[Nacos] Registration failed, retrying...', err);
     setTimeout(registerWithNacos, 5000);
@@ -104,34 +112,34 @@ export async function deregisterFromNacos(): Promise<void> {
   }
 }
 
-// 通过 Nacos 发现 Java 笔记服务
-export async function getNoteServiceUrl(): Promise<string> {
+interface NacosInstance {
+  ip: string;
+  port: number;
+  metadata?: Record<string, string>;
+}
+
+async function getServiceUrl(serviceName: string): Promise<string> {
   if (!nacosNamingClient) throw new Error('Nacos Client uninitialized.');
-  const instances = await nacosNamingClient.selectInstances(
-    config.noteServiceName, 
+  const instances = (await nacosNamingClient.selectInstances(
+    serviceName,
     config.nacos.group, 
     'DEFAULT',
     true
-  );
-  if (!instances || instances.length === 0) {
-    throw new Error(`No instances for ${config.noteServiceName}`);
+  )) as NacosInstance[];
+  const candidates = selectDeveloperInstances(instances ?? [], getCurrentDeveloper());
+  if (candidates.length === 0) {
+    throw new Error(`No matching instances for ${serviceName}`);
   }
-  const instance = instances[Math.floor(Math.random() * instances.length)];
+  const instance = candidates[Math.floor(Math.random() * candidates.length)];
   return `http://${instance.ip}:${instance.port}`;
+}
+
+// 通过 Nacos 发现 Java 笔记服务
+export async function getNoteServiceUrl(): Promise<string> {
+  return getServiceUrl(config.noteServiceName);
 }
 
 // 通过 Nacos 发现 Java 资源服务
 export async function getResourceServiceUrl(): Promise<string> {
-  if (!nacosNamingClient) throw new Error('Nacos Client uninitialized.');
-  const instances = await nacosNamingClient.selectInstances(
-    config.resourceServiceName, 
-    config.nacos.group, 
-    'DEFAULT',
-    true
-  );
-  if (!instances || instances.length === 0) {
-    throw new Error(`No instances for ${config.resourceServiceName}`);
-  }
-  const instance = instances[Math.floor(Math.random() * instances.length)];
-  return `http://${instance.ip}:${instance.port}`;
+  return getServiceUrl(config.resourceServiceName);
 }

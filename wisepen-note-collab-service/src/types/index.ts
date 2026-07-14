@@ -12,6 +12,7 @@ export type OperationType =
   | 'PASTE'
   | 'UNDO'
   | 'REDO'
+  | 'AI_DIFF'
   | 'OTHER'
   | 'KEYBOARD';
 
@@ -37,8 +38,8 @@ export interface Room {
   connections: Map<WebSocket, UserConnection>;
   // 上一个状态向量
   prevStateVector: Uint8Array | null;
-  // 当前版本
-  currentVersion: number;
+  // 已持久化快照版本
+  snapshotVersion: number;
   
   dirty: boolean;
   // 延时销毁定时器
