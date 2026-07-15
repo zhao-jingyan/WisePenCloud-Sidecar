@@ -85,6 +85,52 @@ export const openApiDocument: Record<string, unknown> = {
         },
       },
     },
+    '/internal/ai-note/readXml': {
+      get: {
+        ...internalOperation,
+        tags: ['AI Note'],
+        operationId: 'readActiveNoteXml',
+        summary: '以紧凑 XML 读取整篇活跃笔记',
+        responses: {
+          '200': {
+            description: '读取成功；块 ID 为按文档顺序生成的短 ID',
+            content: {
+              'application/xml': {
+                schema: { type: 'string' },
+                example: '<document resourceId="note-1" version="yjs-v1:example"><paragraph id="p_001">第一句。第二句。</paragraph></document>',
+              },
+            },
+          },
+          ...commonErrors,
+        },
+      },
+      post: {
+        ...internalOperation,
+        tags: ['AI Note'],
+        operationId: 'readActiveNoteXmlWithScope',
+        summary: '按范围以紧凑 XML 读取活跃笔记',
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: reference('ReadNoteRequest'),
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: '读取成功；块 ID 为按文档顺序生成的短 ID',
+            content: {
+              'application/xml': {
+                schema: { type: 'string' },
+                example: '<document resourceId="note-1" version="yjs-v1:example"><paragraph id="p_001">第一句。</paragraph></document>',
+              },
+            },
+          },
+          ...commonErrors,
+        },
+      },
+    },
     '/internal/ai-note/apply': {
       post: {
         ...internalOperation,
@@ -249,7 +295,11 @@ export const openApiDocument: Record<string, unknown> = {
         required: ['line', 'id', 'type', 'editable', 'content', 'children'],
         properties: {
           line: { type: 'integer', minimum: 1 },
-          id: { type: 'string' },
+          id: {
+            type: 'string',
+            pattern: '^p_\\d{3,}$',
+            description: '当前文档版本内的短块 ID，真实存储 ID 不对外暴露。',
+          },
           type: { type: 'string' },
           editable: { type: 'boolean' },
           attrs: {
@@ -288,7 +338,7 @@ export const openApiDocument: Record<string, unknown> = {
           blockIds: {
             type: 'array',
             minItems: 1,
-            items: { type: 'string', minLength: 1 },
+            items: { type: 'string', pattern: '^p_\\d{3,}$' },
           },
         },
       },
@@ -298,7 +348,7 @@ export const openApiDocument: Record<string, unknown> = {
         required: ['kind', 'blockId'],
         properties: {
           kind: { const: 'subtree' },
-          blockId: { type: 'string', minLength: 1 },
+          blockId: { type: 'string', pattern: '^p_\\d{3,}$' },
         },
       },
       BlockRangeScope: {
@@ -307,8 +357,8 @@ export const openApiDocument: Record<string, unknown> = {
         required: ['kind', 'startBlockId', 'endBlockId'],
         properties: {
           kind: { const: 'block_range' },
-          startBlockId: { type: 'string', minLength: 1 },
-          endBlockId: { type: 'string', minLength: 1 },
+          startBlockId: { type: 'string', pattern: '^p_\\d{3,}$' },
+          endBlockId: { type: 'string', pattern: '^p_\\d{3,}$' },
         },
       },
       ReadNoteScope: {
@@ -326,6 +376,11 @@ export const openApiDocument: Record<string, unknown> = {
         properties: {
           scope: reference('ReadNoteScope'),
           includeAiContent: { type: 'boolean', default: true },
+          version: {
+            type: 'string',
+            pattern: '^yjs-v1:',
+            description: 'scope 使用短块 ID 时，对应上一次读取结果的文档版本。',
+          },
         },
       },
       InsertBlockCandidate: {
@@ -348,7 +403,11 @@ export const openApiDocument: Record<string, unknown> = {
         properties: {
           opId: { type: 'string', minLength: 1 },
           kind: { const: 'replaceContent' },
-          blockId: { type: 'string', minLength: 1 },
+          blockId: {
+            type: 'string',
+            pattern: '^p_\\d{3,}$',
+            description: '读取接口返回的短块 ID。',
+          },
           content: reference('EasyContent'),
         },
       },
@@ -359,7 +418,11 @@ export const openApiDocument: Record<string, unknown> = {
         properties: {
           opId: { type: 'string', minLength: 1 },
           kind: { const: 'deleteBlock' },
-          blockId: { type: 'string', minLength: 1 },
+          blockId: {
+            type: 'string',
+            pattern: '^p_\\d{3,}$',
+            description: '读取接口返回的短块 ID。',
+          },
         },
       },
       InsertBlockOperation: {
@@ -369,7 +432,11 @@ export const openApiDocument: Record<string, unknown> = {
         properties: {
           opId: { type: 'string', minLength: 1 },
           kind: { const: 'insertBlock' },
-          anchorBlockId: { type: 'string', minLength: 1 },
+          anchorBlockId: {
+            type: 'string',
+            pattern: '^p_\\d{3,}$',
+            description: '读取接口返回的短锚点 ID。',
+          },
           position: { type: 'string', enum: ['before', 'after'] },
           block: reference('InsertBlockCandidate'),
         },
@@ -408,7 +475,11 @@ export const openApiDocument: Record<string, unknown> = {
             type: 'string',
             enum: ['block_missing', 'anchor_missing', 'unsupported_type', 'invalid_content'],
           },
-          blockId: { type: 'string' },
+          blockId: {
+            type: 'string',
+            pattern: '^p_\\d{3,}$',
+            description: '操作涉及的短块 ID。',
+          },
         },
       },
       ApplyNoteResponse: {

@@ -10,10 +10,23 @@ import { getRoom } from '../ws/room-manager';
 import { parseApplyRequest, parseReadRequest, InvalidRequestError } from './request-parser';
 import { applyPatchToActiveRoom, readActiveRoom } from './service';
 import { isRecord } from './value-utils';
+import { encodeEasyDocumentXml } from './xml-codec';
+import {
+  BlockIdMappingError,
+  publicizeApplyResponseBlockIds,
+  publicizeDocumentBlockIds,
+  rememberBlockIdMapping,
+  resolveApplyRequestBlockIds,
+  resolveReadRequestBlockIds,
+} from './block-id-mapping';
 import { openApiDocument } from '../openapi/document';
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const READ_PATHS = new Set(['/internal/ai-note/read', '/note-collab/internal/ai-note/read']);
+const READ_XML_PATHS = new Set([
+  '/internal/ai-note/readXml',
+  '/note-collab/internal/ai-note/readXml',
+]);
 const APPLY_PATHS = new Set(['/internal/ai-note/apply', '/note-collab/internal/ai-note/apply']);
 
 class PayloadTooLargeError extends Error {}
@@ -31,6 +44,11 @@ function sendJson<T>(res: ServerResponse, status: number, body: R<T>): void {
 
 function sendError(res: ServerResponse, status: number, message: string): void {
   sendJson(res, status, { code: status, msg: message, data: null });
+}
+
+function sendXml(res: ServerResponse, body: string): void {
+  res.writeHead(200, { 'Content-Type': 'application/xml; charset=utf-8' });
+  res.end(body);
 }
 
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
@@ -109,6 +127,19 @@ function requireActiveRoom(resourceId: string): Room {
   return room;
 }
 
+function readPublicActiveRoom(
+  room: Room,
+  request: ReturnType<typeof parseReadRequest>,
+) {
+  const wholeDocument = readActiveRoom(room, { includeAiContent: request.includeAiContent });
+  const mapping = rememberBlockIdMapping(room.yDoc, wholeDocument);
+  const resolvedRequest = resolveReadRequestBlockIds(room.yDoc, request);
+  const document = resolvedRequest.scope && resolvedRequest.scope.kind !== 'whole_note'
+    ? readActiveRoom(room, resolvedRequest)
+    : wholeDocument;
+  return publicizeDocumentBlockIds(document, mapping);
+}
+
 async function handleRead(
   req: IncomingMessage,
   res: ServerResponse,
@@ -124,7 +155,25 @@ async function handleRead(
   const rawBody = req.method === 'POST' ? await readJsonBody(req) : undefined;
   const request = parseReadRequest(rawBody);
   const room = requireActiveRoom(resourceId);
-  sendJson(res, 200, { code: 200, msg: 'success', data: readActiveRoom(room, request) });
+  sendJson(res, 200, { code: 200, msg: 'success', data: readPublicActiveRoom(room, request) });
+}
+
+async function handleReadXml(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+): Promise<void> {
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    sendError(res, 405, 'METHOD_NOT_ALLOWED');
+    return;
+  }
+  assertInternalSource(req);
+  const resourceId = requireResourceId(url);
+  await authorize(req, resourceId, 'VIEW');
+  const rawBody = req.method === 'POST' ? await readJsonBody(req) : undefined;
+  const request = parseReadRequest(rawBody);
+  const room = requireActiveRoom(resourceId);
+  sendXml(res, encodeEasyDocumentXml(readPublicActiveRoom(room, request)));
 }
 
 async function handleApply(
@@ -139,12 +188,22 @@ async function handleApply(
   assertInternalSource(req);
   const resourceId = requireResourceId(url);
   const userId = await authorize(req, resourceId, 'EDIT');
-  const request = parseApplyRequest(await readJsonBody(req));
+  const parsedRequest = parseApplyRequest(await readJsonBody(req));
   const room = requireActiveRoom(resourceId);
+  rememberBlockIdMapping(room.yDoc, readActiveRoom(room, { includeAiContent: false }));
+  const resolvedRequest = resolveApplyRequestBlockIds(room.yDoc, parsedRequest);
+  const response = applyPatchToActiveRoom(room, resolvedRequest, userId);
+  const data = publicizeApplyResponseBlockIds(
+    response,
+    rememberBlockIdMapping(
+      room.yDoc,
+      readActiveRoom(room, { includeAiContent: false }),
+    ),
+  );
   sendJson(res, 200, {
     code: 200,
     msg: 'success',
-    data: applyPatchToActiveRoom(room, request, userId),
+    data,
   });
 }
 
@@ -172,6 +231,10 @@ async function handleRequest(
     await handleRead(req, res, url);
     return;
   }
+  if (READ_XML_PATHS.has(url.pathname)) {
+    await handleReadXml(req, res, url);
+    return;
+  }
   if (APPLY_PATHS.has(url.pathname)) {
     await handleApply(req, res, url);
     return;
@@ -187,6 +250,10 @@ function handleError(res: ServerResponse, error: unknown): void {
   }
   if (error instanceof InvalidRequestError) {
     sendError(res, 400, error.message);
+    return;
+  }
+  if (error instanceof BlockIdMappingError) {
+    sendError(res, 409, error.message);
     return;
   }
   if (error instanceof Error && error.name === 'NotFoundError') {

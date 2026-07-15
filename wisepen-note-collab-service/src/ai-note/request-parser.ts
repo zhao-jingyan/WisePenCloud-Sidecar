@@ -143,8 +143,15 @@ export function parseReadRequest(value: unknown): NoteReadRequest {
   if (value.includeAiContent !== undefined && typeof value.includeAiContent !== 'boolean') {
     throw new InvalidRequestError('includeAiContent 必须是布尔值');
   }
+  const version = value.version === undefined
+    ? undefined
+    : requireNonEmptyString(value.version, 'version');
+  if (version !== undefined && !version.startsWith('yjs-v1:')) {
+    throw new InvalidRequestError('version 格式无效');
+  }
   return {
     scope: parseReadScope(value.scope),
     includeAiContent: value.includeAiContent as boolean | undefined,
+    version,
   };
 }

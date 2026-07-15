@@ -56,6 +56,7 @@ export type NoteReadScope =
 export interface NoteReadRequest {
   scope?: NoteReadScope;
   includeAiContent?: boolean;
+  version?: string;
 }
 
 export interface NativeTextInline {
