@@ -25,10 +25,6 @@ const EDITABLE_BLOCK_TYPES = new Set(
   [...INLINE_BLOCK_TYPES].filter((type) => type !== 'mermaid').concat('table'),
 );
 const PLAIN_TEXT_BLOCK_TYPES = new Set(['codeBlock', 'mermaid']);
-const HIGHLIGHT_COLORS = new Set([
-  'default', 'gray', 'brown', 'red', 'orange', 'yellow',
-  'green', 'blue', 'purple', 'pink',
-]);
 const MARKS: PatchMark[] = ['bold', 'italic', 'underline', 'strike', 'code'];
 const MARK_SET = new Set<string>(MARKS);
 
@@ -166,18 +162,11 @@ export function sanitizeBlockAttributes(
   if (type === 'checkListItem') allowed.add('checked');
   if (type === 'numberedListItem') allowed.add('start');
   if (type === 'codeBlock') allowed.add('language');
-  if (type === 'highlightBlock') {
-    allowed.add('icon');
-    allowed.add('highlightBackgroundColor');
-    allowed.add('highlightBorderColor');
-    allowed.add('highlightTextColor');
-  }
   if (INLINE_BLOCK_TYPES.has(type) && type !== 'highlightBlock') {
     allowed.add('backgroundColor');
     allowed.add('textColor');
     if (type !== 'quote') allowed.add('textAlignment');
   }
-  if (type === 'highlightBlock') allowed.add('textAlignment');
   if (type === 'table') allowed.add('textColor');
   if (Object.keys(attributes).some((key) => !allowed.has(key))) return null;
   if (attributes.level !== undefined &&
@@ -189,23 +178,11 @@ export function sanitizeBlockAttributes(
   if (attributes.start !== undefined &&
       (!Number.isInteger(attributes.start) || Number(attributes.start) < 1)) return null;
   if (attributes.language !== undefined && typeof attributes.language !== 'string') return null;
-  if (attributes.icon !== undefined && typeof attributes.icon !== 'string') return null;
-  for (const key of ['highlightBackgroundColor', 'highlightTextColor'] as const) {
-    if (attributes[key] !== undefined && !HIGHLIGHT_COLORS.has(String(attributes[key]))) return null;
-  }
-  if (attributes.highlightBorderColor !== undefined &&
-      attributes.highlightBorderColor !== 'auto' &&
-      !HIGHLIGHT_COLORS.has(String(attributes.highlightBorderColor))) return null;
-  for (const key of ['highlightBackgroundColor', 'highlightBorderColor', 'highlightTextColor'] as const) {
-    if (attributes[key] !== undefined && typeof attributes[key] !== 'string') return null;
-  }
   for (const key of ['backgroundColor', 'textColor'] as const) {
     if (attributes[key] !== undefined && typeof attributes[key] !== 'string') return null;
   }
   if (attributes.textAlignment !== undefined &&
       !['left', 'center', 'right', 'justify'].includes(String(attributes.textAlignment))) return null;
-  if (type === 'highlightBlock' && attributes.textAlignment !== undefined &&
-      !['left', 'center', 'right'].includes(String(attributes.textAlignment))) return null;
   return attributes;
 }
 
